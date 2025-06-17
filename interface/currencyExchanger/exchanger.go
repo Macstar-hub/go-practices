@@ -31,7 +31,6 @@ type exchangerInterface interface {
 
 func main() {
 	myMony := currencyExchnageUnit{EUR: 100000, USD: 80000, ROUBLE: 20000}
-	fmt.Println(myMony)
 	exchenger(myMony)
 }
 
@@ -40,5 +39,5 @@ func exchenger(e exchangerInterface) {
 	usd := e.rialToUSD(float64(rial))
 	euro := e.rialToEUR(float64(rial))
 	rouble := e.rialToROUBLE(float64(rial))
-	fmt.Println(usd, euro, rouble)
+	fmt.Println("USD:", usd, "EURO:", euro, "Rouble:", rouble)
 }
