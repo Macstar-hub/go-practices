@@ -46,7 +46,7 @@ func httpPost() {
 	// }
 
 	url := "http://185.81.97.192/api/v1/assetcalc"
-	resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader("assetGeram=472&newCoin=14&oldCoin=1&semiCoin=6"))
+	resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader("assetGeram=1&newCoin=1&oldCoin=1&semiCoin=1"))
 	if err != nil {
 		log.Println("Cannot make post request with error: ", err)
 	}
