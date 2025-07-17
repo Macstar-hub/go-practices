@@ -6,12 +6,17 @@ import (
 	"log"
 	"net/http"
 
+	"sync"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
 var (
-	port string
+	port      string
+	clients   = make(map[*websocket.Conn]bool)
+	broadcast = make(chan []byte)
+	mutex     = &sync.Mutex{}
 )
 
 func init() {
@@ -23,7 +28,8 @@ func main() {
 	fmt.Println(port)
 
 	router := gin.Default()
-	makeConnection(router)
+	go broadcastMessage()
+	sendMessage(router)
 
 	// Start Server:
 	router.Run(port)
@@ -42,7 +48,8 @@ func conncetionUpgrader(readBuffer int, writeBuffer int, enableCompression bool)
 	return upgrader
 }
 
-func makeConnection(router *gin.Engine) {
+func sendMessage(router *gin.Engine) {
+
 	// Make Server GET HTML For WebSocket Client
 	router.GET("/", func(c *gin.Context) {
 		c.File("./websocket.html")
@@ -58,18 +65,37 @@ func makeConnection(router *gin.Engine) {
 			log.Println("Error upgrading connection:", err)
 			return
 		}
+		defer conn.Close()
+
+		// Make register connection:
+		mutex.Lock()
+		clients[conn] = true
+		mutex.Unlock()
+
 		for {
-			messageType, p, err := conn.ReadMessage()
-			log.Printf("Message is %s", string(p))
+			_, message, err := conn.ReadMessage()
+			log.Printf("Message is %s", string(message))
 			if err != nil {
 				log.Println("Cannot read message from websocket ...", err)
 				break
 			}
-			err = conn.WriteMessage(messageType, p)
-			if err != nil {
-				log.Println("Cannot write message with error :", err)
-			}
-
+			broadcast <- message
 		}
 	})
+}
+
+func broadcastMessage() {
+	for {
+		message := <-broadcast
+		mutex.Lock()
+		for client := range clients {
+			err := client.WriteMessage(websocket.TextMessage, message)
+			if err != nil {
+				log.Println("Cannot write message with error :", err)
+				client.Close()
+				delete(clients, client)
+			}
+		}
+		mutex.Unlock()
+	}
 }
