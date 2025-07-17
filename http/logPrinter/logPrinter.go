@@ -53,7 +53,6 @@ func sendLines() {
 
 		// Read line by line:
 		scanner.Split(bufio.ScanLines)
-		log.Println(scanner.Text())
 
 		// Send Line throw channel:
 		for scanner.Scan() {
