@@ -96,6 +96,7 @@ func sendMessage(router *gin.Engine) {
 	})
 }
 
+// Make broadcasting message to all clients:
 func broadcastMessage() {
 	for {
 		message := <-broadcast
