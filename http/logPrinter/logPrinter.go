@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"log"
 	"net/http"
-
+	"os"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -19,21 +21,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&port, "a", ":9080", "websocket server address")
-}
-
-func main() {
-
-	// Parse All Flags
-	flag.Parse()
-
-	// Set Server Properties
-	router := gin.Default()
-	go broadcastMessage()
-	sendMessage(router)
-
-	// Start Server:
-	router.Run(port)
+	flag.StringVar(&port, "a", ":9080", "Server Run Port")
 }
 
 func conncetionUpgrader(readBuffer int, writeBuffer int, enableCompression bool) websocket.Upgrader {
@@ -49,8 +37,33 @@ func conncetionUpgrader(readBuffer int, writeBuffer int, enableCompression bool)
 	return upgrader
 }
 
+func sendLines() {
+	// Open file from os:
+	file, err := os.Open("/Users/Shared/codes.dir/go.dir/git.dir/ti-idf/logs/redis/debug.log")
+	if err != nil {
+		log.Println("Cannot open file with error: ", err)
+	}
+	defer file.Close()
+	for {
+		// Make sleep 1
+		time.Sleep(1 * time.Second)
+
+		// Sync Input from file:
+		scanner := bufio.NewScanner(file)
+
+		// Read line by line:
+		scanner.Split(bufio.ScanLines)
+		log.Println(scanner.Text())
+
+		// Send Line throw channel:
+		for scanner.Scan() {
+			broadcast <- scanner.Bytes()
+		}
+	}
+}
+
 func sendMessage(router *gin.Engine) {
-	// Make Server GET HTML For WebSocket Client
+	// Load client page:
 	router.GET("/", func(c *gin.Context) {
 		c.File("./websocket.html")
 	})
@@ -87,6 +100,7 @@ func sendMessage(router *gin.Engine) {
 func broadcastMessage() {
 	for {
 		message := <-broadcast
+		log.Println("Read Line: ", message)
 		mutex.Lock()
 		for client := range clients {
 			err := client.WriteMessage(websocket.TextMessage, message)
@@ -98,4 +112,18 @@ func broadcastMessage() {
 		}
 		mutex.Unlock()
 	}
+}
+
+func main() {
+	// Parse All Flags
+	flag.Parse()
+
+	// Set Server Properties
+	router := gin.Default()
+	go broadcastMessage()
+	go sendLines()
+	sendMessage(router)
+
+	// Start Server:
+	router.Run(port)
 }
