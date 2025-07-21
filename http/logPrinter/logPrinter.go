@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/howeyc/fsnotify"
 )
 
 var (
@@ -37,6 +38,31 @@ func conncetionUpgrader(readBuffer int, writeBuffer int, enableCompression bool)
 	return upgrader
 }
 
+func fileWatchDog() {
+
+	// Make new watcher instance:
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Println("Cannot make new file watchdog with error: ", err)
+	}
+
+	// Send event throw channel:
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Event:
+				log.Printf("Event is: %s", event)
+			}
+		}
+	}()
+
+	// Make watcher:
+	err = watcher.Watch("/Users/Shared/codes.dir/go.dir/git.dir/ti-idf/logs/redis/debug.log")
+	if err != nil {
+		log.Panicln("Cannot watch file: ", err)
+	}
+}
+
 func sendLines() {
 	// Open file from os:
 	file, err := os.Open("/Users/Shared/codes.dir/go.dir/git.dir/ti-idf/logs/redis/debug.log")
@@ -44,6 +70,8 @@ func sendLines() {
 		log.Println("Cannot open file with error: ", err)
 	}
 	defer file.Close()
+
+	// Make watchdog for file:
 	for {
 		// Make sleep 1
 		time.Sleep(1 * time.Second)
@@ -100,7 +128,7 @@ func sendMessage(router *gin.Engine) {
 func broadcastMessage() {
 	for {
 		message := <-broadcast
-		log.Println("Read Line: ", message)
+		// log.Println("Read Line: ", message)
 		mutex.Lock()
 		for client := range clients {
 			err := client.WriteMessage(websocket.TextMessage, message)
@@ -120,6 +148,7 @@ func main() {
 
 	// Set Server Properties
 	router := gin.Default()
+	go fileWatchDog()
 	go broadcastMessage()
 	go sendLines()
 	sendMessage(router)
