@@ -19,10 +19,12 @@ var (
 	clients   = make(map[*websocket.Conn]bool)
 	broadcast = make(chan []byte)
 	mutex     = &sync.Mutex{}
+	path      string
 )
 
 func init() {
 	flag.StringVar(&port, "a", ":9080", "Server Run Port")
+	flag.StringVar(&path, "p", "/Users/Shared/codes.dir/go.dir/git.dir/ti-idf/logs/redis/debug.log", "Path to watch for watchdog")
 }
 
 func conncetionUpgrader(readBuffer int, writeBuffer int, enableCompression bool) websocket.Upgrader {
@@ -38,7 +40,7 @@ func conncetionUpgrader(readBuffer int, writeBuffer int, enableCompression bool)
 	return upgrader
 }
 
-func fileWatchDog() {
+func fileWatchDog(path string) {
 
 	// Make new watcher instance:
 	watcher, err := fsnotify.NewWatcher()
@@ -52,15 +54,44 @@ func fileWatchDog() {
 			select {
 			case event := <-watcher.Event:
 				log.Printf("Event is: %s", event)
+				// send event throw channel when file has been changed:
+				if event.IsModify() {
+					// Trigger only when modification not attribute change:
+					if event.IsAttrib() == false {
+						sendLinesTrigger(path)
+					}
+				}
 			}
 		}
 	}()
 
 	// Make watcher:
-	err = watcher.Watch("/Users/Shared/codes.dir/go.dir/git.dir/ti-idf/logs/redis/debug.log")
+	err = watcher.Watch(path)
 	if err != nil {
 		log.Panicln("Cannot watch file: ", err)
 	}
+}
+
+func sendLinesTrigger(path string) {
+	// Open file from os:
+	file, err := os.Open(path)
+	if err != nil {
+		log.Println("Cannot open file with error: ", err)
+	}
+	defer file.Close()
+
+	// Sync Input from file:
+	scanner := bufio.NewScanner(file)
+
+	// Read line by line:
+	scanner.Split(bufio.ScanLines)
+
+	// Send Line throw channel:
+	for scanner.Scan() {
+		broadcast <- scanner.Bytes()
+	}
+	// Make close file and clean up all attribute releated.
+	file.Close()
 }
 
 func sendLines() {
@@ -148,9 +179,9 @@ func main() {
 
 	// Set Server Properties
 	router := gin.Default()
-	go fileWatchDog()
+	go fileWatchDog(path)
 	go broadcastMessage()
-	go sendLines()
+	// go sendLines()
 	sendMessage(router)
 
 	// Start Server:
