@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -56,16 +55,15 @@ func fileWatchDog(path string) {
 			select {
 			case event := <-watcher.Event:
 				log.Printf("Event is: %s", event)
+
 				// send event throw channel when file has been changed:
 				if event.IsModify() {
+
 					// Trigger only when modification not attribute change:
 					if event.IsAttrib() == false {
 						// Make last seek position:
 						fileLastSeekPostitionSlice = append(fileLastSeekPostitionSlice, fileSeekPosition(path))
-						if len(fileLastSeekPostitionSlice) > 1 {
-							fmt.Println("Last File Size:", fileLastSeekPostitionSlice[len(fileLastSeekPostitionSlice)-3], ",New File Size", fileLastSeekPostitionSlice[len(fileLastSeekPostitionSlice)-1])
-							sendLinesTrigger(path, fileLastSeekPostitionSlice[len(fileLastSeekPostitionSlice)-3])
-						}
+						sendLinesTrigger(path, fileLastSeekPostitionSlice[len(fileLastSeekPostitionSlice)-3])
 					}
 				}
 			}
