@@ -3,11 +3,12 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -15,11 +16,12 @@ import (
 )
 
 var (
-	port      string
-	clients   = make(map[*websocket.Conn]bool)
-	broadcast = make(chan []byte)
-	mutex     = &sync.Mutex{}
-	path      string
+	port                       string
+	clients                    = make(map[*websocket.Conn]bool)
+	broadcast                  = make(chan []byte)
+	mutex                      = &sync.Mutex{}
+	path                       string
+	fileLastSeekPostitionSlice []int
 )
 
 func init() {
@@ -58,7 +60,12 @@ func fileWatchDog(path string) {
 				if event.IsModify() {
 					// Trigger only when modification not attribute change:
 					if event.IsAttrib() == false {
-						sendLinesTrigger(path)
+						// Make last seek position:
+						fileLastSeekPostitionSlice = append(fileLastSeekPostitionSlice, fileSeekPosition(path))
+						if len(fileLastSeekPostitionSlice) > 1 {
+							fmt.Println("Last File Size:", fileLastSeekPostitionSlice[len(fileLastSeekPostitionSlice)-3], ",New File Size", fileLastSeekPostitionSlice[len(fileLastSeekPostitionSlice)-1])
+							sendLinesTrigger(path, fileLastSeekPostitionSlice[len(fileLastSeekPostitionSlice)-3])
+						}
 					}
 				}
 			}
@@ -70,15 +77,22 @@ func fileWatchDog(path string) {
 	if err != nil {
 		log.Panicln("Cannot watch file: ", err)
 	}
+
 }
 
-func sendLinesTrigger(path string) {
+func sendLinesTrigger(path string, lastSize int) {
 	// Open file from os:
 	file, err := os.Open(path)
 	if err != nil {
 		log.Println("Cannot open file with error: ", err)
 	}
 	defer file.Close()
+
+	// Set Seek Position:
+	_, err = file.Seek(int64(lastSize), io.SeekStart)
+	if err != nil {
+		log.Println("Cannot set seek postion on file: ", err)
+	}
 
 	// Sync Input from file:
 	scanner := bufio.NewScanner(file)
@@ -94,30 +108,18 @@ func sendLinesTrigger(path string) {
 	file.Close()
 }
 
-func sendLines() {
-	// Open file from os:
-	file, err := os.Open("/Users/Shared/codes.dir/go.dir/git.dir/ti-idf/logs/redis/debug.log")
+func fileSeekPosition(path string) int {
+	// Make file stats file:
+	fileInfo, err := os.Stat(path)
 	if err != nil {
-		log.Println("Cannot open file with error: ", err)
+		log.Println("Cannot stats file with error: ", err)
 	}
-	defer file.Close()
 
-	// Make watchdog for file:
-	for {
-		// Make sleep 1
-		time.Sleep(1 * time.Second)
+	// Make current file size:
+	currentFileSize := fileInfo.Size()
+	fileLastSeekPostitionSlice = append(fileLastSeekPostitionSlice, int(currentFileSize))
 
-		// Sync Input from file:
-		scanner := bufio.NewScanner(file)
-
-		// Read line by line:
-		scanner.Split(bufio.ScanLines)
-
-		// Send Line throw channel:
-		for scanner.Scan() {
-			broadcast <- scanner.Bytes()
-		}
-	}
+	return int(currentFileSize)
 }
 
 func sendMessage(router *gin.Engine) {
@@ -177,10 +179,14 @@ func main() {
 	// Parse All Flags
 	flag.Parse()
 
+	// First check file size:
+	fileSeekPosition(path)
+
 	// Set Server Properties
 	router := gin.Default()
 	go fileWatchDog(path)
 	go broadcastMessage()
+
 	// go sendLines()
 	sendMessage(router)
 
